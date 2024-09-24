@@ -1,5 +1,8 @@
 ## A generative ai chat, pdf loader
 
+This application allows you to upload a PDF file to Amazone S3 from the Admin side
+From the User side, and once the PDF file has been uploaded to Amazon S3, it allows you to ask questions regarding the uploaded file.
+
 ### Set up AWS:
 - Create a bucket in S3 bucket
 - Get access to Bedrock models (Titan Embeddings G1 - Text, Anthoropic (Claude v2)) 
