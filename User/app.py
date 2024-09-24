@@ -1,128 +1,59 @@
-import boto3
 import streamlit as st
 import os
-import uuid
-import pickle
+
+from dotenv import load_dotenv
+
+import sys
+# checks the directory containing files from other folders
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from load_index_from_s3 import load_index_from_s3
+from get_response import get_response
+from get_llm import get_llm
+
+from utils.setup_aws_profile import setup_aws_profile
+from utils.get_s3_client import get_s3_client
+from utils.get_bedrock_client import get_bedrock_client
+from utils.load_env_variables import load_env_variables
 
 # bedrock
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.vectorstores import FAISS
 
-from langchain.llms.bedrock import Bedrock
 
-## prompt and chain
-from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
+BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME')
+MODEL_ID = os.getenv('MODEL_ID')
+LLM_MODEL_ID = os.getenv('LLM_MODEL_ID')
 
-os.environ['AWS_PROFILE'] = 'GregBS'
+
+load_dotenv()
+setup_aws_profile()
+
+# get bedrock env to pass in bedrock client
+env_vars = load_env_variables()
 
 # s3 client
-s3_client = boto3.client('s3')
-BUCKET_NAME = 'chat-demo1'
-bedrock_client = boto3.client(
-    service_name = 'bedrock-runtime',
-    region_name = 'us-east-1'
-)
+s3_client = get_s3_client()
 
-modelId = 'amazon.titan-embed-text-v1'
+# bedrock client
+bedrock_client = get_bedrock_client(env_vars)
 
-bedrock_embeddings = BedrockEmbeddings(model_id=modelId, client=bedrock_client)
+# bedrock embeddings
+bedrock_embeddings = BedrockEmbeddings(model_id=MODEL_ID, client=bedrock_client)
 
-folder_path = '../temp/'
+folder_path = '/tmp/'
+file_name = 'my_faiss'
 
-# load s3
-def load_index():
-    try:
-      s3_client.download_file(
-          Bucket=BUCKET_NAME, 
-          Key="my_faiss.faiss", 
-          Filename=f"{folder_path}my_faiss.faiss"
-      )
-      print(f"File downloaded successfully to {folder_path}my_faiss.faiss")
-    except Exception as e:
-      print(f"An error occurred: {e}")
-    
-    try:
-      s3_client.download_file(
-          Bucket=BUCKET_NAME, 
-          Key="my_faiss.pkl", 
-          Filename=f"{folder_path}my_faiss.pkl"
-      )
-      print(f"File downloaded successfully to {folder_path}my_faiss.pkl")
-    except Exception as e:
-      print(f"An error occurred: {e}")
-
-def get_unique_id():
-    return str(uuid.uuid4())
-
-def get_llm():
-    llm=Bedrock(model_id="anthropic.claude-v2:1", client=bedrock_client,
-                model_kwargs={'max_tokens_to_sample': 512})
-    return llm
-
-
-def get_response(llm,vectorstore, question ):
-    ## create prompt / template
-    prompt_template = """
-
-    Human: Please use the given context to provide concise answer to the question
-    If you don't know the answer, just say that you don't know, don't try to make up an answer.
-    <context>
-    {context}
-    </context>
-
-    Question: {question}
-
-    Assistant:"""
-
-    PROMPT = PromptTemplate(
-        template=prompt_template, input_variables=["context", "question"]
-    )
-
-    qa = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=vectorstore.as_retriever(
-        search_type="similarity", search_kwargs={"k": 5}
-    ),
-    return_source_documents=True,
-    chain_type_kwargs={"prompt": PROMPT}
-)
-    answer=qa({"query":question})
-    return answer['result']
 
 def main():
     st.header('Client side')
 
-    load_index()
-
-    # dir_list = os.listdir(folder_path)
-    # st.write(f'Files and Dir in {folder_path}')
-    # st.write(dir_list)
-    with open('../temp/my_faiss.pkl', 'rb') as f:
-      data = pickle.load(f)
-    print(type(data))
-    print(data.keys() if isinstance(data, dict) else "Not a dictionary")
-    
-
-    if os.path.exists(f"{folder_path}my_faiss.faiss"):
-      print(f"File exists and its size is {os.path.getsize(f'{folder_path}my_faiss.faiss')} bytes")
-    else:
-      print("File does not exist")
-
-    if os.path.exists(f"{folder_path}my_faiss.pkl"):
-      print(f"File exists and its size is {os.path.getsize(f'{folder_path}my_faiss.pkl')} bytes")
-    else:
-      print("File does not exist")
-
-
+    # load index from s3
+    load_index_from_s3(s3_client, BUCKET_NAME, folder_path)
       
     # create index
-    faiss_index = None
-    
     try:
         faiss_index = FAISS.load_local(
-            index_name="my_faiss",
+            index_name=file_name,
             folder_path = folder_path,
             embeddings=bedrock_embeddings,
             allow_dangerous_deserialization=True,
@@ -132,12 +63,11 @@ def main():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-    st.write("INDEX IS READY")
     question = st.text_input("Please ask your question")
     if st.button("Ask Question"):
       with st.spinner("Querying..."):
 
-          llm = get_llm()
+          llm = get_llm(bedrock_client, LLM_MODEL_ID)
 
           if faiss_index is not None:
             st.write(get_response(llm, faiss_index, question))
