@@ -45,27 +45,3 @@ def load_index_from_s3(s3_client, bucket_name, folder_path):
               success = False
 
       return success
-
-
-
-
-# def load_index():
-#     try:
-#       s3_client.download_file(
-#           Bucket=BUCKET_NAME, 
-#           Key="my_faiss.faiss", 
-#           Filename=f"{folder_path}my_faiss.faiss"
-#       )
-#       print(f"File downloaded successfully to {folder_path}my_faiss.faiss")
-#     except Exception as e:
-#       print(f"An error occurred: {e}")
-    
-#     try:
-#       s3_client.download_file(
-#           Bucket=BUCKET_NAME, 
-#           Key="my_faiss.pkl", 
-#           Filename=f"{folder_path}my_faiss.pkl"
-#       )
-#       print(f"File downloaded successfully to {folder_path}my_faiss.pkl")
-#     except Exception as e:
-#       print(f"An error occurred: {e}")
